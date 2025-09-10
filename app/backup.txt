@@ -1,0 +1,99 @@
+{/* Ledger Update Results */ }
+{
+    jobResults.ledger_update && (
+        <div className="mb-8 bg-green-50 rounded-2xl border border-green-200 p-6">
+            <h4 className="font-semibold text-gray-800 mb-4 flex items-center space-x-2">
+                <FileSpreadsheet className="h-5 w-5 text-green-600" />
+                <span>Ledger Update Results</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                    <div className="text-2xl font-bold text-green-600">
+                        {jobResults.ledger_update.invoice_rows_added}
+                    </div>
+                    <div className="text-sm text-green-700 font-medium">
+                        Invoice Rows Added
+                    </div>
+                </div>
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                    <div className="text-2xl font-bold text-blue-600">
+                        {jobResults.ledger_update.delivery_note_rows_added}
+                    </div>
+                    <div className="text-sm text-blue-700 font-medium">
+                        Delivery Note Rows Added
+                    </div>
+                </div>
+                <div className="text-center p-4 bg-white rounded-lg border border-green-200">
+                    <div className="text-2xl font-bold text-amber-600">
+                        {jobResults.ledger_update.anomaly_rows_added}
+                    </div>
+                    <div className="text-sm text-amber-700 font-medium">
+                        Anomaly Rows Added
+                    </div>
+                </div>
+            </div>
+
+            {/* Download Buttons */}
+            <div className="flex flex-wrap gap-3 mb-4">
+                <a
+                    href={`http://localhost:8000/download-updated-ledger/${jobResults.job_id}`}
+                    className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                    download
+                >
+                    <Download className="h-4 w-4" />
+                    <span>Download Updated CSV</span>
+                </a>
+
+                <a
+                    href={`http://localhost:8000/download-updated-ledger-xlsx/${jobResults.job_id}`}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    download
+                >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>Download Excel</span>
+                </a>
+
+                <button
+                    onClick={() => setShowLedger(!showLedger)}
+                    className="flex items-center space-x-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    <span>{showLedger ? "Hide Ledger View" : "Show Ledger View"}</span>
+                </button>
+            </div>
+
+            {/* Ledger Viewer */}
+            {showLedger && (
+                <div className="mt-4">
+                    <CsvViewer url="http://localhost:8000/view-ledger" title="Updated General Ledger" />
+                </div>
+            )}
+        </div>
+    )
+}
+
+
+
+------
+
+<div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-gray-600">
+                  <div>
+                    <span className="font-medium">Model:</span>{" "}
+                    {jobResults.llm_analysis?.model_used || "N/A"}
+                  </div>
+                  <div>
+                    <span className="font-medium">Tokens:</span>{" "}
+                    {jobResults.llm_analysis?.total_tokens?.toLocaleString() || "N/A"}
+                  </div>
+                  <div>
+                    <span className="font-medium">Response Length:</span>{" "}
+                    {jobResults.llm_analysis?.response_length?.toLocaleString() || "N/A"} chars
+                  </div>
+                  <div>
+                    <span className="font-medium">Completed:</span>{" "}
+                    {jobResults.completed_at ? new Date(jobResults.completed_at).toLocaleString() : "N/A"}
+                  </div>
+                </div>
+              </div>
