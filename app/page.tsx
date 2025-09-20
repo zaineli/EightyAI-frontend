@@ -844,8 +844,13 @@ ANOMALIES (List All Separately):
       // Skip the first line (section header)
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
+        
+        // Stop extracting when we reach the Items: section
+        if (line === "Items:" || line.startsWith("Items:")) {
+          break;
+        }
+        
         const colonIndex = line.indexOf(":");
-
         if (colonIndex > 0) {
           const key = line.substring(0, colonIndex).trim();
           const value = line.substring(colonIndex + 1).trim();
