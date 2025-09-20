@@ -26,7 +26,6 @@ import {
   Database,
   Globe
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 import ExcelJS from "exceljs";
 
 // 1) Put Anomaly at the end
@@ -45,35 +44,66 @@ const HEADERS: string[] = [
   "Anomaly Type",
 ];
 
+const downloadGlobalLedger = async (format: 'csv' | 'xlsx') => {
+  try {
+    const endpoint = format === 'csv' ? '/ledger/csv' : '/ledger/xlsx';
+    const response = await fetch(`http://localhost:8000${endpoint}`);
+
+    if (!response.ok) {
+      throw new Error(`Error downloading global ledger: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `global_ledger.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error('Error downloading ledger:', error);
+    alert(`Failed to download ${format.toUpperCase()} ledger. Please try again.`);
+  }
+};
+
 const IGNORED_ANOMALY_PHRASES: string[] = [
   "Missing financial data in delivery note: No subtotal, VAT, or total amounts provided",
 ];
 
 // 2) Build rows in the new order (anomaly last)
+// Fix cleanedAnomalies and anomaly filtering issues
 function buildFlatRows(
   invoiceRows: string[] = [],
   deliveryRows: string[] = [],
   anomalyRows: string[] = []
 ): string[][] {
-  const cleanedAnomalies = anomalyRows
+  // Clean anomalies: drop ignored phrase and empties
+  const cleanedAnomalies = (anomalyRows || []).filter(
+    (a) => a && !IGNORED_ANOMALY_PHRASES.some((p) => a.includes(p))
+  );
 
   const deliveryByInvoice = new Map<string, string[]>();
-  for (const d of deliveryRows) {
+  for (const d of deliveryRows || []) {
     const p = parseParts(d, 5); // [dn_date, dn_no, inv_no, inv_date, cust_name]
     if (p[2]) deliveryByInvoice.set(p[2], p);
   }
   const usedDelivery = new Set<string>();
   const rows: string[][] = [];
 
-  for (const inv of invoiceRows) {
+  // Invoice rows with matching delivery notes
+  for (const inv of invoiceRows || []) {
     const ip = parseParts(inv, 6); // [inv_date, inv_id, cust, no_vat, vat, total]
     const invId = ip[1];
-    const dp = deliveryByInvoice.get(invId);
-    if (dp) usedDelivery.add(invId);
+    const dp = invId ? deliveryByInvoice.get(invId) : undefined;
+    if (dp && invId) usedDelivery.add(invId);
 
-    const relatedAnomalies = cleanedAnomalies.join(" | ");
+    // Only include anomalies that match this invoice ID
+    const relatedAnomalies = invId
+      ? cleanedAnomalies.filter((a) => a.includes(invId)).join(" | ")
+      : "";
 
-    // Invoice (6) + Delivery (5) + Anomaly (1)
     rows.push([
       ip[0], ip[1], ip[2], ip[3], ip[4], ip[5],
       dp?.[0] || "", dp?.[1] || "", dp?.[2] || "", dp?.[3] || "", dp?.[4] || "",
@@ -81,30 +111,23 @@ function buildFlatRows(
     ]);
   }
 
-  // Delivery without matching invoice
+  // Delivery notes without matching invoices
   for (const [invNo, dp] of deliveryByInvoice.entries()) {
     if (usedDelivery.has(invNo)) continue;
 
-    // Anomalies related to this delivery's invoice number go in the same row
-    const relatedAnomalies = cleanedAnomalies.join(" | ");
+    // Find anomalies related to this delivery note
+    const relatedAnomalies = invNo
+      ? cleanedAnomalies.filter((a) => a.includes(invNo)).join(" | ")
+      : "";
 
     rows.push([
       "", "", "", "", "", "",       // invoice blanks
       dp[0] || "", dp[1] || "", dp[2] || "", dp[3] || "", dp[4] || "",
-      "",             // anomaly at the end (same row)
+      relatedAnomalies,             // anomalies related to this delivery
     ]);
   }
 
-  // Remove orphan anomaly rows: no separate blank-anomaly lines anymore
-  // (Only inline anomalies are shown with their corresponding row.
-  //  Orphan anomalies are those without any related invoice or delivery note)
-  // const invIds = new Set(invoiceRows.map((r) => parseParts(r, 6)[1]).filter(Boolean));
-  // const orphanAnomalies = cleanedAnomalies.filter((a) => ![...invIds].some((id) => a.includes(id as string)));
-  // for (const a of orphanAnomalies) {
-  //   rows.push(["", "", "", "", "", "", "", "", "", "", "", a]);
-  // }
-
-  // // Remove blank-only rows and de-duplicate
+  // Remove blank-only rows and de-duplicate
   const nonEmpty = rows.filter((r) => r.some((v) => String(v).trim() !== ""));
   const seen = new Set<string>();
   const deduped: string[][] = [];
@@ -463,17 +486,17 @@ ANOMALIES (List All Separately):
 
       // Select the correct endpoint based on ledger file
       let endpoint = "http://localhost:8000/upload-multiple-pdfs";
-      
+
       if (ledgerFile) {
         formData.append("ledger_file", ledgerFile);
-        
+
         if (ledgerFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
           endpoint = "http://localhost:8000/upload-multiple-pdfs-with-ledger-xlsx";
         } else if (ledgerFile.type === "text/csv") {
           endpoint = "http://localhost:8000/upload-multiple-pdfs-with-ledger";
         }
       }
-      
+
       const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
@@ -562,7 +585,7 @@ ANOMALIES (List All Separately):
     e.preventDefault();
   };
 
-    const downloadCsvData = async (jobId: string): Promise<void> => {
+  const downloadCsvData = async (jobId: string): Promise<void> => {
     try {
       const response = await fetch(`http://localhost:8000/job-results/${jobId}`);
       if (!response.ok) {
@@ -734,7 +757,7 @@ ANOMALIES (List All Separately):
       case "failed":
         return <AlertCircle className="h-4 w-4 text-red-500" />;
       default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
+        return <Clock className="h-4 w-4 text-black" />;
     }
   };
 
@@ -746,7 +769,7 @@ ANOMALIES (List All Separately):
         const lines = section.split('\n');
         const heading = lines[0].replace(/^##\s*/, '');
         const content = lines.slice(1).join('\n');
-        
+
         return (
           <div key={index} className="mb-6">
             <h3 className="text-lg font-semibold mb-3 pb-2 border-b-2 border-purple-200 text-purple-800">
@@ -760,7 +783,7 @@ ANOMALIES (List All Separately):
                   const subContent = subLines.slice(1).join('\n');
                   return (
                     <div key={subIndex} className="mb-4">
-                      <h4 className="font-medium text-gray-700 mb-2">{subHeading}</h4>
+                      <h4 className="font-medium text-black mb-2">{subHeading}</h4>
                       <pre className="whitespace-pre-wrap text-sm text-gray-600 bg-gray-50 p-3 rounded border">
                         {subContent.trim()}
                       </pre>
@@ -789,42 +812,349 @@ ANOMALIES (List All Separately):
     });
   };
 
+  // New component to beautifully display AI analysis
+  const AnalysisCards: React.FC<{ response: string }> = ({ response }) => {
+    // Parse sections from analysis text
+    const parseSection = (text: string, sectionName: string, nextSection?: string) => {
+      const startRegex = new RegExp(`${sectionName}\\s*(?:\\([^)]+\\))?:?`, 'i');
+      const start = text.search(startRegex);
+      if (start === -1) return "";
+
+      let end = text.length;
+      if (nextSection) {
+        const nextReg = new RegExp(`${nextSection}\\s*(?:\\([^)]+\\))?:?`, 'i');
+        const nextMatch = text.substring(start).search(nextReg);
+        if (nextMatch !== -1) end = start + nextMatch;
+      }
+
+      return text.substring(start, end).trim();
+    };
+
+    // Get document name from section header
+    const getDocName = (section: string) => {
+      const match = section.match(/\(([^)]+)\)/);
+      return match ? match[1] : "";
+    };
+
+    // Extract key-value pairs from section
+    const extractFields = (section: string) => {
+      const lines = section.split("\n");
+      const fields: Record<string, string> = {};
+
+      // Skip the first line (section header)
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const colonIndex = line.indexOf(":");
+
+        if (colonIndex > 0) {
+          const key = line.substring(0, colonIndex).trim();
+          const value = line.substring(colonIndex + 1).trim();
+          fields[key] = value;
+        }
+      }
+
+      return fields;
+    };
+
+    // Extract list items from Items: section
+    const extractItems = (section: string) => {
+      const itemsStartIdx = section.indexOf("Items:");
+      if (itemsStartIdx === -1) return [];
+
+      const itemsSection = section.substring(itemsStartIdx + 6);
+      return itemsSection
+        .split("\n")
+        .map(line => line.trim())
+        .filter(line => line.startsWith("-") || line.startsWith("•"))
+        .map(line => line.substring(1).trim());
+    };
+
+    // Process anomalies section
+    const extractAnomalies = (section: string) => {
+      return section
+        .split("\n")
+        .slice(1) // Skip the header
+        .map(line => line.trim())
+        .filter(line => (line.startsWith("-") || line.startsWith("•")) &&
+          !IGNORED_ANOMALY_PHRASES.some(p => line.includes(p)))
+        .map(line => line.substring(1).trim());
+    };
+
+    // Extract cross-verification items
+    const extractCrossVerification = (section: string) => {
+      const lines = section.split("\n");
+      const result: { common: string[], missingInvoice: string[], missingDelivery: string[] } = {
+        common: [],
+        missingInvoice: [],
+        missingDelivery: []
+      };
+
+      let currentCategory: keyof typeof result | null = null;
+
+      for (const line of lines) {
+        if (line.includes("Common Items")) {
+          currentCategory = "common";
+        } else if (line.includes("Missing in Invoice")) {
+          currentCategory = "missingInvoice";
+        } else if (line.includes("Missing in Delivery")) {
+          currentCategory = "missingDelivery";
+        } else if (currentCategory && (line.startsWith("-") || line.startsWith("•"))) {
+          result[currentCategory].push(line.substring(1).trim());
+        }
+      }
+
+      return result;
+    };
+
+    // Extract main sections
+    const invoiceSection = parseSection(response, "DOCUMENT TYPE: INVOICE", "DOCUMENT TYPE: DELIVERY");
+    const deliverySection = parseSection(response, "DOCUMENT TYPE: DELIVERY", "ITEM CROSS-VERIFICATION");
+    const crossVerSection = parseSection(response, "ITEM CROSS-VERIFICATION", "ANOMALIES");
+    const anomaliesSection = parseSection(response, "ANOMALIES", "====CSV_DATA_START");
+
+    // Process each section
+    const invoiceDocName = getDocName(invoiceSection);
+    const invoiceFields = extractFields(invoiceSection);
+    const invoiceItems = extractItems(invoiceSection);
+
+    const deliveryDocName = getDocName(deliverySection);
+    const deliveryFields = extractFields(deliverySection);
+    const deliveryItems = extractItems(deliverySection);
+
+    const crossVerItems = extractCrossVerification(crossVerSection);
+    const anomalies = extractAnomalies(anomaliesSection);
+
+    return (
+      <div className="space-y-8 text-black !important">
+        {/* Invoice & Delivery Note Cards side-by-side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Invoice Card */}
+          <div className="bg-white rounded-xl border shadow overflow-hidden">
+            <div className="bg-white px-4 py-3 border-b flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <FileText className="h-5 w-5 text-black" />
+                <h3 className="font-semibold text-black">Invoice</h3>
+              </div>
+              {invoiceDocName && (
+                <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded">
+                  {invoiceDocName}
+                </span>
+              )}
+            </div>
+
+            <div className="p-5">
+              {/* Invoice Details */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {Object.entries(invoiceFields).map(([key, value], idx) => (
+                  key !== "Items" && (
+                    <div key={idx} className="text-sm">
+                      <div className="text-black mb-1">{key}</div>
+                      <div className="font-medium">{value}</div>
+                    </div>
+                  )
+                ))}
+              </div>
+
+              {/* Invoice Items */}
+              {invoiceItems.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-black mb-3">Items</h4>
+                  <div className="space-y-2">
+                    {invoiceItems.map((item, idx) => (
+                      <div key={idx} className="bg-gray-50 p-3 rounded border text-sm">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Delivery Note Card */}
+          <div className="bg-white rounded-xl border shadow overflow-hidden">
+            <div className="bg-white px-4 py-3 border-b flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Package className="h-5 w-5 text-black" />
+                <h3 className="font-semibold text-black">Delivery Note</h3>
+              </div>
+              {deliveryDocName && (
+                <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded">
+                  {deliveryDocName}
+                </span>
+              )}
+            </div>
+
+            <div className="p-5">
+              {/* Delivery Note Details */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                {Object.entries(deliveryFields).map(([key, value], idx) => (
+                  key !== "Items" && (
+                    <div key={idx} className="text-sm">
+                      <div className="text-black mb-1">{key}</div>
+                      <div className="font-medium">{value}</div>
+                    </div>
+                  )
+                ))}
+              </div>
+
+              {/* Delivery Items */}
+              {deliveryItems.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-black mb-3">Items</h4>
+                  <div className="space-y-2">
+                    {deliveryItems.map((item, idx) => (
+                      <div key={idx} className="bg-gray-50 p-3 rounded border text-sm">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Cross-Verification Card */}
+        <div className="bg-white rounded-xl border shadow overflow-hidden">
+          <div className="bg-white px-4 py-3 border-b">
+            <div className="flex items-center space-x-2">
+              <Globe className="h-5 w-5 text-black" />
+              <h3 className="font-semibold text-black">Cross-Verification Results</h3>
+            </div>
+          </div>
+
+          <div className="p-5">
+            {/* Common Items */}
+            {crossVerItems.common.length > 0 && (
+              <div className="mb-5">
+                <h4 className="font-medium text-black flex items-center mb-3">
+                  <CheckCircle className="h-4 w-4 text-black mr-2" />
+                  Common Items (in both documents)
+                </h4>
+                <div className="space-y-2">
+                  {crossVerItems.common.map((item, idx) => {
+                    const isMatch = item.toLowerCase().includes("match");
+                    const isMismatch = item.toLowerCase().includes("mismatch");
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-3 rounded border text-sm flex items-center ${isMatch
+                          ? "bg-emerald-50 border-emerald-200"
+                          : isMismatch
+                            ? "bg-amber-50 border-amber-200"
+                            : "bg-gray-50 border-gray-200"
+                          }`}
+                      >
+                        {isMatch && <CheckCircle className="h-4 w-4 text-emerald-500 mr-2 flex-shrink-0" />}
+                        {isMismatch && <AlertCircle className="h-4 w-4 text-amber-500 mr-2 flex-shrink-0" />}
+                        <span>{item}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Missing in Invoice */}
+            {crossVerItems.missingInvoice.length > 0 && (
+              <div className="mb-5">
+                <h4 className="font-medium text-black flex items-center mb-3">
+                  <AlertCircle className="h-4 w-4 text-black mr-2" />
+                  Missing in Invoice
+                </h4>
+                <div className="space-y-2">
+                  {crossVerItems.missingInvoice.map((item, idx) => (
+                    <div key={idx} className="bg-red-50 p-3 rounded border border-red-200 text-sm">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Missing in Delivery */}
+            {crossVerItems.missingDelivery.length > 0 && (
+              <div className="mb-5">
+                <h4 className="font-medium text-black flex items-center mb-3">
+                  <AlertCircle className="h-4 w-4 text-black mr-2" />
+                  Missing in Delivery
+                </h4>
+                <div className="space-y-2">
+                  {crossVerItems.missingDelivery.map((item, idx) => (
+                    <div key={idx} className="bg-orange-50 p-3 rounded border border-orange-200 text-sm">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {crossVerItems.common.length === 0 &&
+              crossVerItems.missingInvoice.length === 0 &&
+              crossVerItems.missingDelivery.length === 0 && (
+                <div className="text-center py-6 text-black">
+                  No cross-verification data available
+                </div>
+              )}
+          </div>
+        </div>
+
+        {/* Anomalies Card */}
+        {anomalies.length > 0 && (
+          <div className="bg-white rounded-xl border shadow overflow-hidden">
+            <div className="bg-white px-4 py-3 border-b">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-5 w-5 text-black" />
+                <h3 className="font-semibold text-black">Anomalies Detected</h3>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <div className="space-y-3">
+                {anomalies.map((anomaly, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white p-3 rounded border text-sm flex items-start"
+                  >
+                    <AlertCircle className="h-4 w-4 text-black mr-2 mt-0.5 flex-shrink-0" />
+                    <span className="text-black">{anomaly}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-600 rounded-xl">
-                <Brain className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  Intelligent Document Processor
-                </h1>
-                <p className="text-gray-600 mt-1">
-                  Advanced OCR + AI Analysis with DeepSeek + Ledger Integration
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowGlobalLedger(!showGlobalLedger)}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-              >
-                <Database className="h-4 w-4" />
-                <span>Global Ledger</span>
-              </button>
-              <button
-                onClick={fetchAllJobs}
-                disabled={refreshing}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                <span>Refresh</span>
-              </button>
-            </div>
+      {/* Compact Toolbar - replaces the big header */}
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-sm border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Brain className="h-5 w-5 text-blue-600" />
+            <span className="font-medium text-gray-800">Document Processor</span>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowGlobalLedger(!showGlobalLedger)}
+              className="flex items-center space-x-2 px-3 py-1.5 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+            >
+              <Database className="h-4 w-4" />
+              <span>Global Ledger</span>
+            </button>
+            <button
+              onClick={fetchAllJobs}
+              disabled={refreshing}
+              className="flex items-center space-x-2 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </button>
           </div>
         </div>
       </div>
@@ -843,26 +1173,26 @@ ANOMALIES (List All Separately):
                 </div>
                 <button
                   onClick={() => setShowGlobalLedger(false)}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-black hover:text-black"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              
+
               <p className="text-gray-600 mb-6">
                 The global ledger contains all extracted data from processed jobs in a centralized file.
                 Download in your preferred format to view all accumulated data.
               </p>
-              
+
               <div className="flex space-x-4">
-                <button 
+                <button
                   onClick={() => downloadGlobalLedger('csv')}
                   className="flex items-center space-x-2 px-5 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm"
                 >
                   <Download className="h-5 w-5" />
                   <span>Download CSV Ledger</span>
                 </button>
-                <button 
+                <button
                   onClick={() => downloadGlobalLedger('xlsx')}
                   className="flex items-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
                 >
@@ -896,10 +1226,10 @@ ANOMALIES (List All Separately):
               <div className="group-hover:scale-110 transition-transform duration-300">
                 <Upload className="mx-auto h-16 w-16 text-blue-400 mb-4" />
               </div>
-              <p className="text-xl text-gray-700 font-medium mb-2">
+              <p className="text-xl text-black font-medium mb-2">
                 Drop your PDF documents here or click to browse
               </p>
-              <p className="text-gray-500">
+              <p className="text-black">
                 Supports multiple PDF files up to 10MB each
               </p>
 
@@ -917,7 +1247,7 @@ ANOMALIES (List All Separately):
             <div className="mt-6 p-4 bg-gray-50 rounded-lg border">
               <div className="flex items-center space-x-3 mb-3">
                 <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                <label className="text-sm font-semibold text-gray-700">
+                <label className="text-sm font-semibold text-black">
                   Ledger File (Optional - for automatic ledger updates):
                 </label>
               </div>
@@ -927,7 +1257,7 @@ ANOMALIES (List All Separately):
                   type="file"
                   accept=".csv,.xlsx"
                   onChange={handleLedgerFileSelect}
-                  className="flex-1 text-sm text-gray-500 file:mr-4 file:py-2 file:px-4
+                  className="flex-1 text-sm text-black file:mr-4 file:py-2 file:px-4
                             file:rounded-lg file:border-0
                             file:text-sm file:font-semibold
                             file:bg-green-50 file:text-green-700
@@ -949,7 +1279,7 @@ ANOMALIES (List All Separately):
                   </div>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-black mt-2">
                 Upload your ledger file (CSV or Excel) to automatically append extracted invoice and delivery note data
               </p>
             </div>
@@ -973,7 +1303,7 @@ ANOMALIES (List All Separately):
             {showPromptConfig && (
               <div className="mt-6 space-y-6 p-6 bg-gray-50 rounded-xl border">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="block text-sm font-semibold text-black mb-3">
                     System Prompt (AI Instructions):
                   </label>
                   <textarea
@@ -986,7 +1316,7 @@ ANOMALIES (List All Separately):
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="block text-sm font-semibold text-black mb-3">
                     Analysis Prompt (Specific Request):
                   </label>
                   <textarea
@@ -1020,7 +1350,7 @@ ANOMALIES (List All Separately):
                           <p className="font-medium text-gray-800">
                             {fileItem.name}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-black">
                             {formatFileSize(fileItem.size)} • PDF Document
                           </p>
                         </div>
@@ -1081,7 +1411,7 @@ ANOMALIES (List All Separately):
                 >
                   {jobStatus?.status
                     ? jobStatus.status.charAt(0).toUpperCase() +
-                      jobStatus.status.slice(1)
+                    jobStatus.status.slice(1)
                     : "Unknown"}
                 </span>
               </div>
@@ -1099,7 +1429,7 @@ ANOMALIES (List All Separately):
                     <span className="text-2xl font-bold text-gray-800">
                       {jobStatus?.status
                         ? jobStatus.status.charAt(0).toUpperCase() +
-                          jobStatus.status.slice(1)
+                        jobStatus.status.slice(1)
                         : "Unknown"}
                     </span>
                   </div>
@@ -1121,7 +1451,7 @@ ANOMALIES (List All Separately):
                         </span>
                       </>
                     ) : (
-                      <span className="text-sm text-gray-500">No Ledger</span>
+                      <span className="text-sm text-black">No Ledger</span>
                     )}
                   </div>
                   <div className="text-sm text-gray-600">Integration</div>
@@ -1137,7 +1467,7 @@ ANOMALIES (List All Separately):
                         Processing in Progress
                       </p>
                       <p className="text-sm text-blue-600">
-                        {jobStatus.ledger_file 
+                        {jobStatus.ledger_file
                           ? `Extracting data with OCR, analyzing with AI, and updating ${jobStatus.ledger_format === "xlsx" ? "Excel" : "CSV"} ledger...`
                           : "Extracting text with OCR and preparing for AI analysis..."}
                       </p>
@@ -1261,7 +1591,7 @@ ANOMALIES (List All Separately):
                             <p className="text-sm font-medium text-gray-800 truncate">
                               {file.original_filename}
                             </p>
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-black">
                               {file.ocr_result?.total_pages} pages • {file.ocr_result?.total_words} words • {file.tables_extracted} tables
                             </p>
                           </div>
@@ -1280,7 +1610,7 @@ ANOMALIES (List All Separately):
                     <Package className="h-5 w-5 text-green-600" />
                     <span>Extracted Structured Data</span>
                   </h4>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
                       <div className="text-2xl font-bold text-green-600">
@@ -1307,7 +1637,7 @@ ANOMALIES (List All Separately):
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Ledger Update Information */}
                   {jobResults.ledger_update && (
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
@@ -1339,18 +1669,18 @@ ANOMALIES (List All Separately):
                       </div>
                     </div>
                   )}
-                  
+
                   {/* CSV Data Previews */}
                   {extractedCsvData.csv_data.invoice_rows.length > 0 && (
                     <div className="mb-4">
-                      <h5 className="font-medium text-gray-700 mb-2">Invoice Data:</h5>
+                      <h5 className="font-medium text-black mb-2">Invoice Data:</h5>
                       <div className="bg-gray-50 rounded-lg p-3 text-sm font-mono overflow-x-auto">
                         <div className="text-gray-600 mb-1">Invoice date,Invoice ID,Customer name,Invoice amount (No VAT),VAT,Total Amount</div>
                         {extractedCsvData.csv_data.invoice_rows.slice(0, 3).map((row, i) => (
                           <div key={i} className="text-gray-800">{row}</div>
                         ))}
                         {extractedCsvData.csv_data.invoice_rows.length > 3 && (
-                          <div className="text-gray-500">... and {extractedCsvData.csv_data.invoice_rows.length - 3} more</div>
+                          <div className="text-black">... and {extractedCsvData.csv_data.invoice_rows.length - 3} more</div>
                         )}
                       </div>
                     </div>
@@ -1358,14 +1688,14 @@ ANOMALIES (List All Separately):
 
                   {extractedCsvData.csv_data.delivery_note_rows.length > 0 && (
                     <div className="mb-4">
-                      <h5 className="font-medium text-gray-700 mb-2">Delivery Note Data:</h5>
+                      <h5 className="font-medium text-black mb-2">Delivery Note Data:</h5>
                       <div className="bg-gray-50 rounded-lg p-3 text-sm font-mono overflow-x-auto">
                         <div className="text-gray-600 mb-1">Delivery note date,Delivery note number,Invoice number,Invoice date,Customer name</div>
                         {extractedCsvData.csv_data.delivery_note_rows.slice(0, 3).map((row, i) => (
                           <div key={i} className="text-gray-800">{row}</div>
                         ))}
                         {extractedCsvData.csv_data.delivery_note_rows.length > 3 && (
-                          <div className="text-gray-500">... and {extractedCsvData.csv_data.delivery_note_rows.length - 3} more</div>
+                          <div className="text-black">... and {extractedCsvData.csv_data.delivery_note_rows.length - 3} more</div>
                         )}
                       </div>
                     </div>
@@ -1373,7 +1703,7 @@ ANOMALIES (List All Separately):
 
                   {extractedCsvData.csv_data.anomaly_rows.length > 0 && (
                     <div className="mb-4">
-                      <h5 className="font-medium text-gray-700 mb-2">Anomalies:</h5>
+                      <h5 className="font-medium text-black mb-2">Anomalies:</h5>
                       <div className="bg-amber-50 rounded-lg p-3 text-sm">
                         {extractedCsvData.csv_data.anomaly_rows.map((anomaly, i) => (
                           <div key={i} className="text-amber-800 mb-1">• {anomaly}</div>
@@ -1385,25 +1715,11 @@ ANOMALIES (List All Separately):
               )}
 
               {/* AI Analysis Results */}
-              {jobResults.llm_analysis && (
-                <div className="mb-8">
-                  <h4 className="font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                    <Brain className="h-5 w-5 text-purple-600" />
-                    <span>AI Analysis Results</span>
-                  </h4>
+              
 
-                  <div className="mb-4 flex justify-between items-center">
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">Model:</span> {jobResults.llm_analysis.model_used}
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-6 border-l-4 border-purple-400 shadow-sm">
-                    <div className="prose max-w-none">
-                      {formatAnalysisResponse(jobResults.llm_analysis.response)}
-                    </div>
-                  </div>
-                </div>
+              {/* New: AI Analysis Cards */}
+              {jobResults.llm_analysis?.response && (
+                <AnalysisCards response={jobResults.llm_analysis.response} />
               )}
             </div>
           </div>
@@ -1416,7 +1732,7 @@ ANOMALIES (List All Separately):
               <h3 className="text-xl font-semibold text-gray-800">
                 Job History
               </h3>
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-black">
                 {allJobs.length} total jobs
               </span>
             </div>
@@ -1427,22 +1743,22 @@ ANOMALIES (List All Separately):
                   <table className="min-w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-black">
                           Job ID
                         </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-black">
                           Status
                         </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-black">
                           Files
                         </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-black">
                           Type
                         </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-black">
                           Created
                         </th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-black">
                           Actions
                         </th>
                       </tr>
@@ -1451,9 +1767,8 @@ ANOMALIES (List All Separately):
                       {allJobs.map((job) => (
                         <tr
                           key={job.job_id}
-                          className={`hover:bg-gray-50 transition-colors ${
-                            selectedJobId === job.job_id ? "bg-blue-50" : ""
-                          }`}
+                          className={`hover:bg-gray-50 transition-colors ${selectedJobId === job.job_id ? "bg-blue-50" : ""
+                            }`}
                         >
                           <td className="px-6 py-4">
                             <div className="font-mono text-sm text-gray-800">
@@ -1484,7 +1799,8 @@ ANOMALIES (List All Separately):
                                 <>
                                   <FileSpreadsheet className="h-4 w-4 text-green-600" />
                                   <span className="text-sm text-green-700">
-                                    {job.ledger_format === "xlsx" ? "Excel Ledger" : "CSV Ledger"}
+                                    {job.ledger_format === "xlsx" ?
+                                      "Excel Ledger" : "CSV Ledger"}
                                   </span>
                                 </>
                               ) : (
@@ -1537,7 +1853,7 @@ ANOMALIES (List All Separately):
             ) : (
               <div className="text-center py-12">
                 <FileText className="mx-auto h-16 w-16 text-gray-300 mb-4" />
-                <p className="text-gray-500 text-lg">No jobs found</p>
+                <p className="text-black text-lg">No jobs found</p>
                 <p className="text-gray-400 text-sm">
                   Upload some PDFs to get started with AI analysis and ledger integration!
                 </p>
