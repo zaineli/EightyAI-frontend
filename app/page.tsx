@@ -1030,7 +1030,98 @@ ANOMALIES (List All Separately):
           </div>
 
           <div className="p-5">
-            {/* Common Items */}
+            {/* Document Comparison Table - Add this new section */}
+            <div className="mb-5">
+              <h4 className="font-medium text-black flex items-center mb-3">
+                <Table className="h-4 w-4 text-black mr-2" />
+                Invoice vs Delivery Note Comparison
+              </h4>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 border">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Field</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Delivery Note</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {(() => {
+                      // Get values with flexible field matching
+                      const invNumber = invoiceFields["Invoice Number"] || "-";
+                      const invDate = invoiceFields["Invoice Date"] || "-";
+                      const invCustomer = invoiceFields["Customer Name"] || "-";
+                      
+                      const delInvNumber = deliveryFields["Associated Invoice Number"] || "-";
+                      const delInvDate = deliveryFields["Associated Invoice Date"] || "-";
+                      const delCustomer = deliveryFields["Customer Name"] || "-";
+                      
+                      // Check matches
+                      const numberMatch = invNumber !== "-" && delInvNumber !== "-" && invNumber === delInvNumber;
+                      const dateMatch = invDate !== "-" && delInvDate !== "-" && invDate === delInvDate;
+                      const customerMatch = invCustomer !== "-" && delCustomer !== "-" && invCustomer === delCustomer;
+                      const allMatch = numberMatch && dateMatch && customerMatch;
+                      
+                      return (
+                        <>
+                          <tr className={!numberMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Invoice Number</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invNumber}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{delInvNumber}</td>
+                            <td className="px-4 py-2 text-sm">
+                              {numberMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+                          <tr className={!dateMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Invoice Date</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invDate}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{delInvDate}</td>
+                            <td className="px-4 py-2 text-sm">
+                              {dateMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+                          <tr className={!customerMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Customer Name</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invCustomer}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{delCustomer}</td>
+                            <td className="px-4 py-2 text-sm">
+                              {customerMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+                          <tr className={!allMatch ? "bg-red-50" : "bg-green-50"}>
+                            <td className="px-4 py-2 text-sm font-semibold text-gray-900">Overall Status</td>
+                            <td colSpan={2} className="px-4 py-2"></td>
+                            <td className="px-4 py-2 text-sm font-medium">
+                              {allMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />All Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatches Found</span>
+                              )}
+                            </td>
+                          </tr>
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
+            {/* Common Items - existing code */}
             {crossVerItems.common.length > 0 && (
               <div className="mb-5">
                 <h4 className="font-medium text-black flex items-center mb-3">
