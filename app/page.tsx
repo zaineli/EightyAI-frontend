@@ -44,6 +44,27 @@ const HEADERS: string[] = [
   "Anomaly Type",
 ];
 
+const downloadLedgerXLSX = async () => {
+  try {
+    const response = await fetch(`http://localhost:8000/ledger/download`);
+    if (!response.ok) {
+      throw new Error(`Error downloading ledger: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ledger.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (error) {
+    console.error('Error downloading ledger:', error);
+    alert('Failed to download XLSX ledger. Please try again.');
+  }
+};
+
 const downloadGlobalLedger = async (format: 'csv' | 'xlsx') => {
   try {
     const endpoint = format === 'csv' ? '/ledger/csv' : '/ledger/xlsx';
@@ -1257,49 +1278,39 @@ ANOMALIES (List All Separately):
 
       {/* Global Ledger Section */}
       {showGlobalLedger && (
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="bg-white rounded-2xl shadow-lg border border-green-200 mb-8">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <Globe className="h-6 w-6 text-green-600" />
-                  <h2 className="text-2xl font-semibold text-gray-900">
-                    Global Ledger
-                  </h2>
-                </div>
-                <button
-                  onClick={() => setShowGlobalLedger(false)}
-                  className="text-black hover:text-black"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <p className="text-gray-600 mb-6">
-                The global ledger contains all extracted data from processed jobs in a centralized file.
-                Download in your preferred format to view all accumulated data.
-              </p>
-
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => downloadGlobalLedger('csv')}
-                  className="flex items-center space-x-2 px-5 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm"
-                >
-                  <Download className="h-5 w-5" />
-                  <span>Download CSV Ledger</span>
-                </button>
-                <button
-                  onClick={() => downloadGlobalLedger('xlsx')}
-                  className="flex items-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                >
-                  <FileSpreadsheet className="h-5 w-5" />
-                  <span>Download Excel Ledger</span>
-                </button>
-              </div>
-            </div>
+  <div className="max-w-7xl mx-auto px-6 py-4">
+    <div className="bg-white rounded-2xl shadow-lg border border-green-200 mb-8">
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <Globe className="h-6 w-6 text-green-600" />
+            <h2 className="text-2xl font-semibold text-gray-900">
+              Ledger Download
+            </h2>
           </div>
+          <button
+            onClick={() => setShowGlobalLedger(false)}
+            className="text-black hover:text-black"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-      )}
+        <p className="text-gray-600 mb-6">
+          The ledger.xlsx file in backend/ledger is automatically updated after every job with extracted invoice, delivery note, and anomaly data. Download the latest version below.
+        </p>
+        <div className="flex space-x-4">
+          <button
+            onClick={downloadLedgerXLSX}
+            className="flex items-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <FileSpreadsheet className="h-5 w-5" />
+            <span>Download Ledger XLSX</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Upload Section */}
