@@ -1350,46 +1350,6 @@ ANOMALIES (List All Separately):
               />
             </div>
 
-            {/* Ledger CSV/XLSX Upload */}
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg border">
-              <div className="flex items-center space-x-3 mb-3">
-                <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                <label className="text-sm font-semibold text-black">
-                  Ledger File (Optional - for automatic ledger updates):
-                </label>
-              </div>
-              <div className="flex items-center space-x-4">
-                <input
-                  ref={ledgerInputRef}
-                  type="file"
-                  accept=".csv,.xlsx"
-                  onChange={handleLedgerFileSelect}
-                  className="flex-1 text-sm text-black file:mr-4 file:py-2 file:px-4
-                            file:rounded-lg file:border-0
-                            file:text-sm file:font-semibold
-                            file:bg-green-50 file:text-green-700
-                            hover:file:bg-green-100"
-                />
-                {ledgerFile && (
-                  <div className="flex items-center space-x-2 text-sm text-green-700 bg-green-100 px-3 py-1 rounded-lg">
-                    <CheckCircle className="h-4 w-4" />
-                    <span>{ledgerFile.name}</span>
-                    <button
-                      onClick={() => {
-                        setLedgerFile(null);
-                        if (ledgerInputRef.current) ledgerInputRef.current.value = '';
-                      }}
-                      className="text-green-600 hover:text-green-800"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-black mt-2">
-                Upload your ledger file (CSV or Excel) to automatically append extracted invoice and delivery note data
-              </p>
-            </div>
 
             {/* Prompt Configuration Toggle */}
             <div className="mt-6">
@@ -1408,7 +1368,7 @@ ANOMALIES (List All Separately):
 
             {/* Prompt Configuration */}
             {showPromptConfig && (
-              <div className="mt-6 space-y-6 p-6 bg-gray-50 rounded-xl border">
+              <div className="text-black !important mt-6 space-y-6 p-6 bg-gray-50 rounded-xl border">
                 <div>
                   <label className="block text-sm font-semibold text-black mb-3">
                     System Prompt (AI Instructions):
