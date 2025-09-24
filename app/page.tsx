@@ -24,7 +24,9 @@ import {
   RefreshCw,
   Package,
   Database,
-  Globe
+  Globe,
+  Settings,
+  Info
 } from "lucide-react";
 import ExcelJS from "exceljs";
 
@@ -950,52 +952,52 @@ ANOMALIES (List All Separately):
     const crossVerItems = extractCrossVerification(crossVerSection);
     const anomalies = extractAnomalies(anomaliesSection);
     // Add this ref at the component level
-const prevInvoiceIdRef = useRef(null as string | null);
+    const prevInvoiceIdRef = useRef(null as string | null);
 
     const fetchLedgerDataForInvoice = useCallback(async (invoiceId: string) => {
-  try {
-    const response = await fetch(`http://localhost:8000/ledger/invoice/${encodeURIComponent(invoiceId)}`);
-    if (response.ok) {
-      const data = await response.json();
-      setLedgerData(data);
-    } else {
-      setLedgerData({});
-      console.error("Failed to fetch ledger data:", await response.text());
-    }
-  } catch (error) {
-    console.error("Error fetching ledger data:", error);
-    setLedgerData({});
-  }
-}, []);
+      try {
+        const response = await fetch(`http://localhost:8000/ledger/invoice/${encodeURIComponent(invoiceId)}`);
+        if (response.ok) {
+          const data = await response.json();
+          setLedgerData(data);
+        } else {
+          setLedgerData({});
+          console.error("Failed to fetch ledger data:", await response.text());
+        }
+      } catch (error) {
+        console.error("Error fetching ledger data:", error);
+        setLedgerData({});
+      }
+    }, []);
 
-// Add proper dependency and check for both possible field names
-useEffect(() => {
-  // Check for multiple possible field names for invoice ID
-  const invoiceId = invoiceFields?.["Invoice Number"] || 
-                   invoiceFields?.["Invoice ID"] ||
-                   invoiceFields?.["Invoice Number/ID"];
-                   
-  // Keep track of previous invoice ID to avoid redundant API calls
-  if (invoiceId && invoiceId !== prevInvoiceIdRef.current) {
-    prevInvoiceIdRef.current = invoiceId;
-    fetchLedgerDataForInvoice(invoiceId);
-  }
-}, [invoiceFields, fetchLedgerDataForInvoice]);
+    // Add proper dependency and check for both possible field names
+    useEffect(() => {
+      // Check for multiple possible field names for invoice ID
+      const invoiceId = invoiceFields?.["Invoice Number"] || 
+                       invoiceFields?.["Invoice ID"] ||
+                       invoiceFields?.["Invoice Number/ID"];
+                       
+      // Keep track of previous invoice ID to avoid redundant API calls
+      if (invoiceId && invoiceId !== prevInvoiceIdRef.current) {
+        prevInvoiceIdRef.current = invoiceId;
+        fetchLedgerDataForInvoice(invoiceId);
+      }
+    }, [invoiceFields, fetchLedgerDataForInvoice]);
 
 
     return (
-      <div className="space-y-8 text-black !important">
+      <div className="space-y-8 text-black">
         {/* Invoice & Delivery Note Cards side-by-side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Invoice Card */}
-          <div className="bg-white rounded-xl border shadow overflow-hidden">
-            <div className="bg-white px-4 py-3 border-b flex items-center justify-between">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+            <div className="bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 border-b flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <FileText className="h-5 w-5 text-black" />
-                <h3 className="font-semibold text-black">Invoice</h3>
+                <FileText className="h-5 w-5 text-green-700" />
+                <h3 className="font-semibold text-green-900">Invoice</h3>
               </div>
               {invoiceDocName && (
-                <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded">
+                <span className="text-xs bg-white text-green-800 px-2 py-1 rounded shadow-sm border border-green-200">
                   {invoiceDocName}
                 </span>
               )}
@@ -1007,8 +1009,8 @@ useEffect(() => {
                 {Object.entries(invoiceFields).map(([key, value], idx) => (
                   key !== "Items" && (
                     <div key={idx} className="text-sm">
-                      <div className="text-black mb-1">{key}</div>
-                      <div className="font-medium">{value}</div>
+                      <div className="text-gray-600 mb-1 font-medium">{key}</div>
+                      <div className="font-semibold text-gray-800">{value}</div>
                     </div>
                   )
                 ))}
@@ -1017,10 +1019,13 @@ useEffect(() => {
               {/* Invoice Items */}
               {invoiceItems.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-black mb-3">Items</h4>
+                  <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+                    <Package className="h-4 w-4 mr-1 text-gray-500" />
+                    Items
+                  </h4>
                   <div className="space-y-2">
                     {invoiceItems.map((item, idx) => (
-                      <div key={idx} className="bg-gray-50 p-3 rounded border text-sm">
+                      <div key={idx} className="bg-gray-50 p-3 rounded border border-gray-200 text-sm hover:bg-gray-100 transition-colors">
                         {item}
                       </div>
                     ))}
@@ -1031,17 +1036,12 @@ useEffect(() => {
           </div>
 
           {/* Delivery Note Card */}
-          <div className="bg-white rounded-xl border shadow overflow-hidden">
-            <div className="bg-white px-4 py-3 border-b flex items-center justify-between">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200">
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-3 border-b flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <Package className="h-5 w-5 text-black" />
-                <h3 className="font-semibold text-black">Delivery Note</h3>
+                <Package className="h-5 w-5 text-blue-700" />
+                <h3 className="font-semibold text-blue-900">Delivery Note</h3>
               </div>
-              {deliveryDocName && (
-                <span className="text-xs bg-gray-100 text-black px-2 py-1 rounded">
-                  {deliveryDocName}
-                </span>
-              )}
             </div>
 
             <div className="p-5">
@@ -1237,6 +1237,21 @@ const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.t
 
                       return (
                         <>
+                          <tr className={!dateMatch ? "bg-red-50" : ""}>
+                <td className="px-4 py-2 text-sm font-medium text-gray-900">Invoice Date</td>
+                <td className="px-4 py-2 text-sm text-gray-500">{ledgerDate}</td>
+                <td className="px-4 py-2 text-sm text-gray-500">{invDate}</td>
+                <td className="px-4 py-2 text-sm text-gray-500">
+                  {dateMatch ? "-" : "Date mismatch"}
+                </td>
+                <td className="px-4 py-2 text-sm">
+                  {dateMatch ? (
+                    <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                  ) : (
+                    <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                  )}
+                </td>
+              </tr>
 
                           {/* Customer Name */}
                           <tr className={!customerMatch ? "bg-red-50" : ""}>
@@ -1900,7 +1915,7 @@ const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.t
                   )}
 
                   {/* CSV Data Previews */}
-                  {extractedCsvData.csv_data.invoice_rows.length > 0 && (
+                  {/* {extractedCsvData.csv_data.invoice_rows.length > 0 && (
                     <div className="mb-4">
                       <h5 className="font-medium text-black mb-2">Invoice Data:</h5>
                       <div className="bg-gray-50 rounded-lg p-3 text-sm font-mono overflow-x-auto">
@@ -1913,9 +1928,9 @@ const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.t
                         )}
                       </div>
                     </div>
-                  )}
+                  )} */}
 
-                  {extractedCsvData.csv_data.delivery_note_rows.length > 0 && (
+                  {/* {extractedCsvData.csv_data.delivery_note_rows.length > 0 && (
                     <div className="mb-4">
                       <h5 className="font-medium text-black mb-2">Delivery Note Data:</h5>
                       <div className="bg-gray-50 rounded-lg p-3 text-sm font-mono overflow-x-auto">
@@ -1928,7 +1943,7 @@ const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.t
                         )}
                       </div>
                     </div>
-                  )}
+                  )} */}
 
                   {extractedCsvData.csv_data.anomaly_rows.length > 0 && (
                     <div className="mb-4">
