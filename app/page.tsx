@@ -1205,7 +1205,7 @@ useEffect(() => {
 
                       // Mock ledger values - in real app, these would come from your API
                       // You could fetch these from an endpoint that accesses your ledger data
-                      const ledgerDate = ledgerData && (ledgerData["Transaction Date"] || ledgerData["Invoice Date"] || "-");
+                      const ledgerDate = ledgerData && (ledgerData["Transaction Date"].split("T")[0] || ledgerData["Invoice Date"].split("T")[0] || "-");
 const ledgerCustomer = ledgerData && (ledgerData["Customer Name"] || "-");
 const ledgerAmountNoVat = parseFloat(ledgerData && ledgerData["Amount (No VAT)"]?.toString()?.replace(/[^\d.-]/g, '') || "0");
 const ledgerVatAmount = parseFloat(ledgerData && ledgerData["VAT Amount"]?.toString()?.replace(/[^\d.-]/g, '') || "0");
@@ -1237,22 +1237,6 @@ const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.t
 
                       return (
                         <>
-                          {/* Invoice Date */}
-                          <tr className={!dateMatch ? "bg-red-50" : ""}>
-                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Invoice Date</td>
-                            <td className="px-4 py-2 text-sm text-gray-500">{ledgerDate}</td>
-                            <td className="px-4 py-2 text-sm text-gray-500">{invDate}</td>
-                            <td className="px-4 py-2 text-sm text-gray-500">
-                              {dateMatch ? "-" : "Date mismatch"}
-                            </td>
-                            <td className="px-4 py-2 text-sm">
-                              {dateMatch ? (
-                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
-                              ) : (
-                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
-                              )}
-                            </td>
-                          </tr>
 
                           {/* Customer Name */}
                           <tr className={!customerMatch ? "bg-red-50" : ""}>
@@ -1421,31 +1405,6 @@ const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.t
           </div>
         </div>
 
-        {/* Anomalies Card */}
-        {anomalies.length > 0 && (
-          <div className="bg-white rounded-xl border shadow overflow-hidden">
-            <div className="bg-white px-4 py-3 border-b">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-5 w-5 text-black" />
-                <h3 className="font-semibold text-black">Anomalies Detected</h3>
-              </div>
-            </div>
-
-            <div className="p-5">
-              <div className="space-y-3">
-                {anomalies.map((anomaly, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-white p-3 rounded border text-sm flex items-start"
-                  >
-                    <AlertCircle className="h-4 w-4 text-black mr-2 mt-0.5 flex-shrink-0" />
-                    <span className="text-black">{anomaly}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
