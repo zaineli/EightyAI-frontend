@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Upload,
   File,
@@ -267,7 +267,7 @@ const DocumentUploader: React.FC = () => {
   const [extractedCsvData, setExtractedCsvData] = useState<ExtractedCsvData | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [showGlobalLedger, setShowGlobalLedger] = useState<boolean>(false);
-
+  const [ledgerData, setLedgerData] = useState<any>(null);
   // Enhanced system prompt with CSV format requirements
   const [systemPrompt, setSystemPrompt] = useState<string>(`You are an intelligent document processing assistant specialized in extracting and comparing information from invoices and delivery notes with particular focus on table content and item matching.
 
@@ -865,12 +865,12 @@ ANOMALIES (List All Separately):
       // Skip the first line (section header)
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
-        
+
         // Stop extracting when we reach the Items: section
         if (line === "Items:" || line.startsWith("Items:")) {
           break;
         }
-        
+
         const colonIndex = line.indexOf(":");
         if (colonIndex > 0) {
           const key = line.substring(0, colonIndex).trim();
@@ -949,6 +949,39 @@ ANOMALIES (List All Separately):
 
     const crossVerItems = extractCrossVerification(crossVerSection);
     const anomalies = extractAnomalies(anomaliesSection);
+    // Add this ref at the component level
+const prevInvoiceIdRef = useRef(null as string | null);
+
+    const fetchLedgerDataForInvoice = useCallback(async (invoiceId: string) => {
+  try {
+    const response = await fetch(`http://localhost:8000/ledger/invoice/${encodeURIComponent(invoiceId)}`);
+    if (response.ok) {
+      const data = await response.json();
+      setLedgerData(data);
+    } else {
+      setLedgerData({});
+      console.error("Failed to fetch ledger data:", await response.text());
+    }
+  } catch (error) {
+    console.error("Error fetching ledger data:", error);
+    setLedgerData({});
+  }
+}, []);
+
+// Add proper dependency and check for both possible field names
+useEffect(() => {
+  // Check for multiple possible field names for invoice ID
+  const invoiceId = invoiceFields?.["Invoice Number"] || 
+                   invoiceFields?.["Invoice ID"] ||
+                   invoiceFields?.["Invoice Number/ID"];
+                   
+  // Keep track of previous invoice ID to avoid redundant API calls
+  if (invoiceId && invoiceId !== prevInvoiceIdRef.current) {
+    prevInvoiceIdRef.current = invoiceId;
+    fetchLedgerDataForInvoice(invoiceId);
+  }
+}, [invoiceFields, fetchLedgerDataForInvoice]);
+
 
     return (
       <div className="space-y-8 text-black !important">
@@ -1057,7 +1090,7 @@ ANOMALIES (List All Separately):
                 <Table className="h-4 w-4 text-black mr-2" />
                 Invoice vs Delivery Note Comparison
               </h4>
-              
+
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 border">
                   <thead className="bg-gray-50">
@@ -1074,17 +1107,17 @@ ANOMALIES (List All Separately):
                       const invNumber = invoiceFields["Invoice Number"] || "-";
                       const invDate = invoiceFields["Invoice Date"] || "-";
                       const invCustomer = invoiceFields["Customer Name"] || "-";
-                      
+
                       const delInvNumber = deliveryFields["Associated Invoice Number"] || "-";
                       const delInvDate = deliveryFields["Associated Invoice Date"] || "-";
                       const delCustomer = deliveryFields["Customer Name"] || "-";
-                      
+
                       // Check matches
                       const numberMatch = invNumber !== "-" && delInvNumber !== "-" && invNumber === delInvNumber;
                       const dateMatch = invDate !== "-" && delInvDate !== "-" && invDate === delInvDate;
                       const customerMatch = invCustomer !== "-" && delCustomer !== "-" && invCustomer === delCustomer;
                       const allMatch = numberMatch && dateMatch && customerMatch;
-                      
+
                       return (
                         <>
                           <tr className={!numberMatch ? "bg-red-50" : ""}>
@@ -1141,7 +1174,177 @@ ANOMALIES (List All Separately):
                 </table>
               </div>
             </div>
-            
+
+
+            {/* Ledger vs Invoice Comparison Table */}
+            <div className="mb-8">
+              <h4 className="font-medium text-black flex items-center mb-3">
+                <Database className="h-4 w-4 text-black mr-2" />
+                Ledger vs Invoice Comparison
+              </h4>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 border">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Field</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ledger Value</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice Value</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Difference</th>
+                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {(() => {
+                      // Extract invoice values
+                      const invDate = invoiceFields["Invoice Date"] || "-";
+                      const invCustomer = invoiceFields["Customer Name"] || "-";
+                      const invAmountNoVat = parseFloat(invoiceFields["Amount Excluding VAT"]?.replace(/[^\d.-]/g, '') || "0");
+                      const invVatAmount = parseFloat(invoiceFields["VAT Amount"]?.replace(/[^\d.-]/g, '') || "0");
+                      const invTotalAmount = parseFloat(invoiceFields["Total Amount"]?.replace(/[^\d.-]/g, '') || "0");
+
+                      // Mock ledger values - in real app, these would come from your API
+                      // You could fetch these from an endpoint that accesses your ledger data
+                      const ledgerDate = ledgerData && (ledgerData["Transaction Date"] || ledgerData["Invoice Date"] || "-");
+const ledgerCustomer = ledgerData && (ledgerData["Customer Name"] || "-");
+const ledgerAmountNoVat = parseFloat(ledgerData && ledgerData["Amount (No VAT)"]?.toString()?.replace(/[^\d.-]/g, '') || "0");
+const ledgerVatAmount = parseFloat(ledgerData && ledgerData["VAT Amount"]?.toString()?.replace(/[^\d.-]/g, '') || "0");
+const ledgerTotalAmount = parseFloat(ledgerData && ledgerData["Total Amount"]?.toString()?.replace(/[^\d.-]/g, '') || "0");
+                      // Date conversion for comparison (similar to date_to_serial in Python)
+                      const formatDate = (dateStr) => {
+                        if (!dateStr || dateStr === "-") return null;
+                        try {
+                          return new Date(dateStr).getTime();
+                        } catch (e) {
+                          return null;
+                        }
+                      };
+
+                      // Calculate matches based on the same logic as match_ledger_invoice_with_values
+                      const invDateSerial = formatDate(invDate);
+                      const ledgerDateSerial = formatDate(ledgerDate);
+
+                      const dateMatch = invDateSerial && ledgerDateSerial &&
+                        invDateSerial === ledgerDateSerial;
+                      const customerMatch = invCustomer !== "-" && ledgerCustomer !== "-" &&
+                        invCustomer === ledgerCustomer;
+                      const amountNoVatMatch = Math.abs(ledgerAmountNoVat - invAmountNoVat) < 0.01;
+                      const vatAmountMatch = Math.abs(ledgerVatAmount - invVatAmount) < 0.01;
+                      const totalAmountMatch = Math.abs(ledgerTotalAmount - invTotalAmount) < 0.01;
+
+                      const allMatch = dateMatch && customerMatch && amountNoVatMatch &&
+                        vatAmountMatch && totalAmountMatch;
+
+                      return (
+                        <>
+                          {/* Invoice Date */}
+                          <tr className={!dateMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Invoice Date</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{ledgerDate}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invDate}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">
+                              {dateMatch ? "-" : "Date mismatch"}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {dateMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Customer Name */}
+                          <tr className={!customerMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Customer Name</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{ledgerCustomer}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invCustomer}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">
+                              {customerMatch ? "-" : "Name mismatch"}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {customerMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Amount (No VAT) */}
+                          <tr className={!amountNoVatMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Amount (No VAT)</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{ledgerAmountNoVat.toFixed(2)}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invAmountNoVat.toFixed(2)}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">
+                              {amountNoVatMatch ? "-" :
+                                Math.abs(ledgerAmountNoVat - invAmountNoVat).toFixed(2)}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {amountNoVatMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* VAT Amount */}
+                          <tr className={!vatAmountMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">VAT Amount</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{ledgerVatAmount.toFixed(2)}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invVatAmount.toFixed(2)}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">
+                              {vatAmountMatch ? "-" :
+                                Math.abs(ledgerVatAmount - invVatAmount).toFixed(2)}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {vatAmountMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Total Amount */}
+                          <tr className={!totalAmountMatch ? "bg-red-50" : ""}>
+                            <td className="px-4 py-2 text-sm font-medium text-gray-900">Total Amount</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{ledgerTotalAmount.toFixed(2)}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">{invTotalAmount.toFixed(2)}</td>
+                            <td className="px-4 py-2 text-sm text-gray-500">
+                              {totalAmountMatch ? "-" :
+                                Math.abs(ledgerTotalAmount - invTotalAmount).toFixed(2)}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {totalAmountMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatch</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* Overall Status */}
+                          <tr className={!allMatch ? "bg-red-50" : "bg-green-50"}>
+                            <td className="px-4 py-2 text-sm font-bold text-gray-900">Overall Status</td>
+                            <td colSpan={3} className="px-4 py-2"></td>
+                            <td className="px-4 py-2 text-sm font-medium">
+                              {allMatch ? (
+                                <span className="text-green-600 flex items-center"><CheckCircle className="h-4 w-4 mr-1" />All Match</span>
+                              ) : (
+                                <span className="text-red-600 flex items-center"><AlertCircle className="h-4 w-4 mr-1" />Mismatches Found</span>
+                              )}
+                            </td>
+                          </tr>
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* Common Items - existing code */}
             {crossVerItems.common.length > 0 && (
               <div className="mb-5">
@@ -1278,39 +1481,39 @@ ANOMALIES (List All Separately):
 
       {/* Global Ledger Section */}
       {showGlobalLedger && (
-  <div className="max-w-7xl mx-auto px-6 py-4">
-    <div className="bg-white rounded-2xl shadow-lg border border-green-200 mb-8">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-3">
-            <Globe className="h-6 w-6 text-green-600" />
-            <h2 className="text-2xl font-semibold text-gray-900">
-              Ledger Download
-            </h2>
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="bg-white rounded-2xl shadow-lg border border-green-200 mb-8">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <Globe className="h-6 w-6 text-green-600" />
+                  <h2 className="text-2xl font-semibold text-gray-900">
+                    Ledger Download
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setShowGlobalLedger(false)}
+                  className="text-black hover:text-black"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="text-gray-600 mb-6">
+                The ledger.xlsx file in backend/ledger is automatically updated after every job with extracted invoice, delivery note, and anomaly data. Download the latest version below.
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={downloadLedgerXLSX}
+                  className="flex items-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <FileSpreadsheet className="h-5 w-5" />
+                  <span>Download Ledger XLSX</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={() => setShowGlobalLedger(false)}
-            className="text-black hover:text-black"
-          >
-            <X className="h-5 w-5" />
-          </button>
         </div>
-        <p className="text-gray-600 mb-6">
-          The ledger.xlsx file in backend/ledger is automatically updated after every job with extracted invoice, delivery note, and anomaly data. Download the latest version below.
-        </p>
-        <div className="flex space-x-4">
-          <button
-            onClick={downloadLedgerXLSX}
-            className="flex items-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <FileSpreadsheet className="h-5 w-5" />
-            <span>Download Ledger XLSX</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Upload Section */}
@@ -1782,7 +1985,7 @@ ANOMALIES (List All Separately):
               )}
 
               {/* AI Analysis Results */}
-              
+
 
               {/* New: AI Analysis Cards */}
               {jobResults.llm_analysis?.response && (
